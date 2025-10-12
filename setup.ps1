@@ -141,6 +141,14 @@ finally {
         # Delete log file if everything went fine
         Remove-Item $logFile -Force
         Write-Host "`u{1F5D1} Log file deleted (no errors)." -ForegroundColor Cyan
+        
+        # Fun welcome message
+        Write-Host "`n" -ForegroundColor Cyan
+        Write-Host "🎉 Welcome to the Exciting World of Flutter! 🎉" -ForegroundColor Magenta
+        Write-Host "Hani welcomes you to the thrilling journey of Errors 😅" -ForegroundColor Yellow
+        Write-Host "Remember: Every Error is a new friend on your learning path! 🚀" -ForegroundColor Green
+        Write-Host "Get ready for the adventure... Errors are waiting for you! 🎮" -ForegroundColor Cyan
+        Write-Host "`n" -ForegroundColor Cyan
     }
     else {
         Write-Host "`u{1F4C4} Log file kept at: $logFile" -ForegroundColor Yellow
