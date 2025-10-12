@@ -1,0 +1,16 @@
+# Compressed files
+*.7z
+*.zip
+*.rar
+*.tar
+*.gz
+*.tgz
+*.bz2
+*.xz
+*.lz
+*.cab
+*.iso
+*.jar
+*.war
+*.ear
+*.exe
