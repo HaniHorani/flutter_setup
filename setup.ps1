@@ -56,42 +56,162 @@ try {
         throw
     }
 
-    # Files (must exist in the same directory as this script)
-    $flutterRar = Join-Path $scriptPath "flutter.rar"
-    $gradleRar = Join-Path $scriptPath ".gradle.rar"
+    # Find Flutter archive (supports any name starting with "flutter" and any compression format)
+    $flutterArchive = $null
+    $gradleArchive = $null
+    
+    # Look for Flutter archive with any name starting with "flutter" and any extension
+    $flutterPatterns = @("flutter*.rar", "flutter*.zip", "flutter*.7z", "flutter*.tar.gz")
+    $allFlutterFiles = @()
+    
+    foreach ($pattern in $flutterPatterns) {
+        $found = Get-ChildItem -Path $scriptPath -Name $pattern -ErrorAction SilentlyContinue
+        if ($found) {
+            $allFlutterFiles += $found
+        }
+    }
+    
+    if ($allFlutterFiles.Count -gt 1) {
+        Write-Log "`u{26A0} Multiple Flutter archives found:" "Yellow"
+        foreach ($file in $allFlutterFiles) {
+            Write-Log "`u{2022} $file" "Yellow"
+        }
+        Write-Log "`u{26A0} Using the first one: $($allFlutterFiles[0])" "Yellow"
+        Write-Log "`u{26A0} To use a different version, rename or move other Flutter archives" "Yellow"
+    }
+    
+    if ($allFlutterFiles.Count -gt 0) {
+        $flutterArchive = Join-Path $scriptPath $allFlutterFiles[0]
+        Write-Log "`u{2714} Selected Flutter archive: $($allFlutterFiles[0])" "Green"
+    }
+    
+    # Look for Gradle archive with any name starting with ".gradle" and any extension
+    $gradlePatterns = @(".gradle*.rar", ".gradle*.zip", ".gradle*.7z", ".gradle*.tar.gz")
+    $allGradleFiles = @()
+    
+    foreach ($pattern in $gradlePatterns) {
+        $found = Get-ChildItem -Path $scriptPath -Name $pattern -ErrorAction SilentlyContinue
+        if ($found) {
+            $allGradleFiles += $found
+        }
+    }
+    
+    if ($allGradleFiles.Count -gt 1) {
+        Write-Log "`u{26A0} Multiple Gradle archives found:" "Yellow"
+        foreach ($file in $allGradleFiles) {
+            Write-Log "`u{2022} $file" "Yellow"
+        }
+        Write-Log "`u{26A0} Using the first one: $($allGradleFiles[0])" "Yellow"
+        Write-Log "`u{26A0} To use a different version, rename or move other Gradle archives" "Yellow"
+    }
+    
+    if ($allGradleFiles.Count -gt 0) {
+        $gradleArchive = Join-Path $scriptPath $allGradleFiles[0]
+        Write-Log "`u{2714} Selected Gradle archive: $($allGradleFiles[0])" "Green"
+    }
 
     # Add a check for required files
-    if (-not (Test-Path $flutterRar)) {
-        Write-Log "`u{274C} flutter.rar not found in: $scriptPath" "Red" -IsError
+    if (-not $flutterArchive) {
+        Write-Log "`u{274C} No Flutter archive found. Looking for files starting with 'flutter' (rar, zip, 7z, tar.gz)" "Red" -IsError
         throw
     }
-    if (-not (Test-Path $gradleRar)) {
-        Write-Log "`u{274C} .gradle.rar not found in: $scriptPath" "Red" -IsError
-        throw
+    
+    # Gradle archive is optional
+    if (-not $gradleArchive) {
+        Write-Log "`u{26A0} No Gradle archive found. Gradle dependencies will be downloaded automatically on first Flutter build." "Yellow"
+        Write-Log "`u{26A0} This may take longer on first run but is perfectly normal." "Yellow"
     }
 
-    # Find WinRAR
-    $winrar = (Get-Command "rar.exe" -ErrorAction SilentlyContinue).Source
-    if (-not $winrar) {
-        $possiblePaths = @(
-            "C:\Program Files\WinRAR\rar.exe",
-            "C:\Program Files (x86)\WinRAR\rar.exe"
-        )
-        foreach ($path in $possiblePaths) {
-            if (Test-Path $path) {
-                $winrar = $path
-                break
+    # Find extraction tool based on archive type
+    $extractionTool = $null
+    $extractionCommand = $null
+    $archiveExtension = [System.IO.Path]::GetExtension($flutterArchive).ToLower()
+    
+    switch ($archiveExtension) {
+        ".rar" {
+            # Find WinRAR
+            $winrar = (Get-Command "rar.exe" -ErrorAction SilentlyContinue).Source
+            if (-not $winrar) {
+                $possiblePaths = @(
+                    "C:\Program Files\WinRAR\rar.exe",
+                    "C:\Program Files (x86)\WinRAR\rar.exe"
+                )
+                foreach ($path in $possiblePaths) {
+                    if (Test-Path $path) {
+                        $winrar = $path
+                        break
+                    }
+                }
+            }
+            if ($winrar) {
+                $extractionTool = $winrar
+                $extractionCommand = "x -y"
+                Write-Log "`u{2714} WinRAR found at: $winrar" "Green"
+            }
+        }
+        ".zip" {
+            # Use PowerShell built-in Expand-Archive
+            $extractionTool = "PowerShell"
+            $extractionCommand = "Expand-Archive"
+            Write-Log "`u{2714} Using PowerShell built-in ZIP extraction" "Green"
+        }
+        ".7z" {
+            # Find 7-Zip
+            $sevenzip = (Get-Command "7z.exe" -ErrorAction SilentlyContinue).Source
+            if (-not $sevenzip) {
+                $possiblePaths = @(
+                    "C:\Program Files\7-Zip\7z.exe",
+                    "C:\Program Files (x86)\7-Zip\7z.exe"
+                )
+                foreach ($path in $possiblePaths) {
+                    if (Test-Path $path) {
+                        $sevenzip = $path
+                        break
+                    }
+                }
+            }
+            if ($sevenzip) {
+                $extractionTool = $sevenzip
+                $extractionCommand = "x -y"
+                Write-Log "`u{2714} 7-Zip found at: $sevenzip" "Green"
+            }
+        }
+        ".gz" {
+            # For tar.gz files, try to find tar or 7-Zip
+            $tar = (Get-Command "tar.exe" -ErrorAction SilentlyContinue).Source
+            if ($tar) {
+                $extractionTool = $tar
+                $extractionCommand = "-xzf"
+                Write-Log "`u{2714} tar found at: $tar" "Green"
+            } else {
+                # Try 7-Zip as fallback
+                $sevenzip = (Get-Command "7z.exe" -ErrorAction SilentlyContinue).Source
+                if (-not $sevenzip) {
+                    $possiblePaths = @(
+                        "C:\Program Files\7-Zip\7z.exe",
+                        "C:\Program Files (x86)\7-Zip\7z.exe"
+                    )
+                    foreach ($path in $possiblePaths) {
+                        if (Test-Path $path) {
+                            $sevenzip = $path
+                            break
+                        }
+                    }
+                }
+                if ($sevenzip) {
+                    $extractionTool = $sevenzip
+                    $extractionCommand = "x -y"
+                    Write-Log "`u{2714} 7-Zip found at: $sevenzip (for tar.gz)" "Green"
+                }
             }
         }
     }
 
-    # Add a check for WinRAR installation
-    if (-not $winrar) {
-        Write-Log "WinRAR not found. Please install it first." "Red" -IsError
+    # Add a check for extraction tool installation
+    if (-not $extractionTool) {
+        Write-Log "`u{274C} No suitable extraction tool found for $archiveExtension files. Please install WinRAR, 7-Zip, or ensure tar is available." "Red" -IsError
         throw
     }
-
-    Write-Log "`u{2714} WinRAR found at: $winrar" "Green"
 
     # Extraction paths
     $flutterDest = "C:\dev"
@@ -118,14 +238,46 @@ try {
     }
 
     # Extract flutter
-    Write-Log "Extracting flutter.rar..."
+    Write-Log "Extracting Flutter archive..."
     New-Item -ItemType Directory -Force -Path $flutterDest | Out-Null
-    & $winrar x -y $flutterRar "$flutterDest\" | Out-Null
+    
+    if ($extractionTool -eq "PowerShell") {
+        # Use PowerShell Expand-Archive for ZIP files
+        Expand-Archive -Path $flutterArchive -DestinationPath $flutterDest -Force
+    } else {
+        # Use external tool (WinRAR, 7-Zip, tar)
+        if ($extractionCommand -eq "-xzf") {
+            # tar command
+            & $extractionTool $extractionCommand $flutterArchive -C $flutterDest
+        } else {
+            # WinRAR or 7-Zip command
+            & $extractionTool $extractionCommand $flutterArchive "$flutterDest\"
+        }
+    }
 
-    # Extract gradle
-    Write-Log "Extracting .gradle.rar..."
-    New-Item -ItemType Directory -Force -Path $gradleDest | Out-Null
-    & $winrar x -y $gradleRar "$gradleDest\" | Out-Null
+    # Extract gradle (only if archive exists)
+    if ($gradleArchive) {
+        Write-Log "Extracting Gradle archive..."
+        New-Item -ItemType Directory -Force -Path $gradleDest | Out-Null
+        
+        $gradleExtension = [System.IO.Path]::GetExtension($gradleArchive).ToLower()
+        if ($gradleExtension -eq ".zip") {
+            # Use PowerShell Expand-Archive for ZIP files
+            Expand-Archive -Path $gradleArchive -DestinationPath $gradleDest -Force
+        } else {
+            # Use external tool (WinRAR, 7-Zip, tar)
+            if ($extractionCommand -eq "-xzf") {
+                # tar command
+                & $extractionTool $extractionCommand $gradleArchive -C $gradleDest
+            } else {
+                # WinRAR or 7-Zip command
+                & $extractionTool $extractionCommand $gradleArchive "$gradleDest\"
+            }
+        }
+        Write-Log "`u{2714} Gradle dependencies extracted successfully" "Green"
+    } else {
+        Write-Log "`u{26A0} Skipping Gradle extraction - will be downloaded automatically" "Yellow"
+    }
 
     # Update PATH (add flutter/bin only)
     $flutterBin = Join-Path $flutterDest "flutter\bin"
