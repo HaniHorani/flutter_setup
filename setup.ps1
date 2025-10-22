@@ -1,12 +1,24 @@
 # Self-elevate the script if required
-if (-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
-    $commandLine = "-File `"" + $MyInvocation.MyCommand.Path + "`" " + $MyInvocation.UnboundArguments
-    Start-Process -FilePath PowerShell.exe -Verb RunAs -ArgumentList $commandLine
+if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
+
+    # script path
+    $script = $MyInvocation.MyCommand.Path
+
+    # pass any arguments that exist when running
+    $args = $MyInvocation.UnboundArguments -join ' '
+
+    # set PowerShell options to work in a new window with Admin permissions
+    $psArgs = "-NoProfile -ExecutionPolicy Bypass -NoExit -File `"$script`" $args"
+
+    # start the new process with Admin permissions
+    Start-Process -FilePath "powershell.exe" -ArgumentList $psArgs -Verb RunAs
+
+    # stop the current script
     exit
 }
 #  add check for existing flutter installation and back it up
 # Set execution policy for current process
-Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
+# Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 
 # Script path and log file
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
