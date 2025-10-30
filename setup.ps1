@@ -251,7 +251,7 @@ try {
             & $extractionTool $extractionCommand $flutterArchive -C $flutterDest
         } else {
             # WinRAR or 7-Zip command
-            & $extractionTool $extractionCommand $flutterArchive "$flutterDest\"
+            & $extractionTool x -y ""$flutterArchive"" ""$flutterDest`\""
         }
     }
 
